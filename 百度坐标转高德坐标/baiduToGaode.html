@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta id="viewport" name="viewport" content="width=device-width,user-scalable=no,initial-scale=1.0,maximum-scale=1.0"/>
+    <!--引入高德地图API-->
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=f630f288cce2d1a4ebcced91233e3f8d"></script>
+    <script src="js/jquery-3.3.1.min.js"></script>
+    <script src="js/FileSaver.js"></script>
+    <style>
+        html, body, #container {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+        /*去掉（实际上设置成了完全透明）高德地图LOG和版权信息*/
+        .amap-logo {
+            opacity: 0;
+        }
+        .amap-copyright {
+            opacity: 0;
+        }
+        #cvs {
+            border: 0px solid red;
+        }
+    </style>
+    <title>奥体中心拥堵疏散仿真平台</title>
+</head>
+<body>
+<!--地图容器-->
+<div id="container"></div>
+<script type="text/javascript">
+    //获取车辆行驶路径数据
+    var vehicles_routes = []; //二维数组，一行代表一条路径
+    $.ajax({
+        type: 'get',
+        url: 'json/aoti_routes_vehicles.json',
+        async: false, //同步方式
+        dataType: 'json',
+        success: function(data) {
+            vehicles_routes = data;
+        },
+        error: function(e) {
+            alert('获取json文件失败！');
+        }
+    });
+
+    // 创建包含4个节点的折线及文字标注
+    function createPathArr(vehicles_routes) {
+        var pIndex = []; //vehicles_routes数组中各行的点（经度+纬度为一个点）个数
+        var path = []; //所有的车辆路径接成一条，一维数组
+        for (var i=0; i<vehicles_routes.length; i++) {
+            pIndex[i] = vehicles_routes[i].length/2;
+            for (var j=0; j<vehicles_routes[i].length-1; j+=2) {
+                path.push(new AMap.LngLat(vehicles_routes[i][j], vehicles_routes[i][j+1]));
+            }
+        }
+        return {path: path, pIndex: pIndex};
+    }
+    var pathInfo = createPathArr(vehicles_routes);
+    var path = pathInfo.path;
+    var pIndex = pathInfo.pIndex;
+
+    //加载奥体中心地图区域
+    var map = new AMap.Map('container', {
+        resizeEnable: true,
+        zooms: [5, 18], //最小缩放等级和最大缩放等级
+        zoom: 16,
+        center: [106.505818, 29.525407] //高德坐标系-奥体中心坐标
+    });
+
+    //添加地图控件
+    AMap.plugin(["AMap.ControlBar"], function () {
+        var bar = new AMap.ControlBar();
+        map.addControl(bar);
+    });
+
+    //数组求和
+    function sum(arr, start, end) {
+        var s = 0;
+        for (var i=start; i<=end; i++) {
+            s += arr[i];
+        }
+        return s;
+    }
+
+    // 启动程序
+    var n = 1; //1到42，即第二次一直到底43次
+    function main(lnglat, type) {
+        // AMap.convertFrom一次可转换坐标的数目是有限的（100左右还是可以的，但数目过大就不行了）
+        AMap.convertFrom(lnglat, type, function (status, result) {
+            if (result.info === 'ok') { //百度坐标->高德坐标已成功
+                var rs = '';
+                for (var i=0; i<result.locations.length; i++) { //第一条路径的点对象
+                    rs = rs + result.locations[i].getLng() + ', '
+                    + result.locations[i].getLat() + ',';
+                    // rs.push(result.locations[i].getLng()); //经度
+                    // rs.push(result.locations[i].getLat()); //纬度
+                }
+                rs = rs.substr(0, rs.length - 1); //去掉最后的','字符
+                rs = '[' + rs + ']';
+                //存储高德坐标为json文件
+                var file = new File([rs], 'gaodeCoordinates.json', {
+                    type: "text/plain;charset=utf-8"
+                });
+                saveAs(file);
+            } else {
+                alert('百度坐标->高德坐标失败');
+            }
+        });
+    }
+    //第一次转换
+    // main(path.slice(0, pIndex[0]), 'baidu');
+    //第二次及之后的转换
+    main(path.slice(sum(pIndex, 0, n-1), sum(pIndex, 0, n)), 'baidu');
+</script>
+</body>
+</html>
